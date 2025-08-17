@@ -1,53 +1,114 @@
 import { useState, type FormEvent } from "react";
-import { supabase } from "../lib/supabaseClient";
 import { useNavigate, Link } from "react-router-dom";
-import { Button, Paper, Stack, Text, TextInput, PasswordInput, Title, Alert, Group } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  Paper,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { api } from "../lib/api"; // Adjust import path as needed
+import { useAuth } from "../context/AuthContext";
 
-export default function Login() {
-  const [email, setEmail] = useState(""); 
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string|null>(null);
+function validateEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+function validatePassword(v: string) {
+  // Simple rule: at least 6 chars. Adjust if you want stronger checks.
+  return v.length >= 6;
+}
+
+export default function Signup() {
   const nav = useNavigate();
+  const { refresh } = useAuth();
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setBusy(true); setErr(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (error) {
-      // Helpful message for unconfirmed email setups
-      if (error.message.toLowerCase().includes("email not confirmed")) {
-        setErr("Please confirm your email from your inbox before signing in.");
-      } else {
-        setErr(error.message);
-      }
-    } else {
+    setErr(null);
+
+    // client-side validation
+    if (!name.trim()) return setErr("Please enter your name.");
+    if (!validateEmail(email)) return setErr("Please enter a valid email address.");
+    if (!validatePassword(pw)) return setErr("Password must be at least 6 characters.");
+    if (pw !== pw2) return setErr("Passwords do not match.");
+
+    try {
+      setBusy(true);
+      await api("/api/signup", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password: pw }),
+      });
+
+      // session cookie is set by the backend — refresh in-memory user and go to app
+      await refresh();
       nav("/dashboard", { replace: true });
+    } catch (e: any) {
+      setErr(e?.message || "Signup failed");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
-      <Paper shadow="sm" radius="md" p="lg" withBorder style={{ width: 380 }}>
-        <Title order={3} mb="xs">Sign in</Title>
-        <Text c="dimmed" size="sm" mb="md">Use your email and password.</Text>
+      <Paper shadow="sm" radius="md" p="lg" withBorder style={{ width: 420 }}>
+        <Title order={3} mb="xs">Create your account</Title>
+        <Text c="dimmed" size="sm" mb="md">
+          You’ll start as an <b>Employer</b>. Roles can be updated by an Admin later.
+        </Text>
+
         {err && <Alert color="red" mb="sm">{err}</Alert>}
+
         <form onSubmit={submit}>
           <Stack gap="sm">
-            <TextInput label="Email" type="email" value={email}
-              onChange={(e)=>setEmail(e.currentTarget.value)} required />
-            <PasswordInput label="Password" value={password}
-              onChange={(e)=>setPassword(e.currentTarget.value)} required />
-            <Button type="submit" loading={busy}>Sign in</Button>
+            <TextInput
+              label="Full name"
+              placeholder="Jane Doe"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              required
+            />
+            <TextInput
+              label="Email"
+              type="email"
+              placeholder="jane@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+              required
+            />
+            <PasswordInput
+              label="Password"
+              value={pw}
+              onChange={(e) => setPw(e.currentTarget.value)}
+              required
+              description="At least 6 characters"
+            />
+            <PasswordInput
+              label="Confirm password"
+              value={pw2}
+              onChange={(e) => setPw2(e.currentTarget.value)}
+              required
+            />
+            <Button type="submit" loading={busy}>
+              Create account
+            </Button>
           </Stack>
         </form>
+
         <Group justify="space-between" mt="md">
           <Text size="sm">
-            New here? <Link to="/signup">Create account</Link>
-          </Text>
-          <Text size="sm">
-            <Link to="/forgot-password">Forgot password?</Link>
+            Already have an account? <Link to="/login">Sign in</Link>
           </Text>
         </Group>
       </Paper>
