@@ -5,6 +5,11 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import RoleGate from "./components/RoleGate";
 import PublicOnly from "./components/PublicOnly";
 import type { JSX } from "react/jsx-runtime";
+import EmployerRequestsList from "./pages/employer/requests/List";
+import EmployerRequestNew from "./pages/employer/requests/New";
+import FrontDeskRequests from "./pages/frontdesk/Requests";
+import AdminUsers from "./pages/admin/Users";
+
 
 // Lazy pages (keeps initial bundle small)
 const Home = lazy(() => import("./pages/Home"));
@@ -71,4 +76,14 @@ export const router = createBrowserRouter([
 
   // Catch-all (last)
   { path: "*", element: <Navigate to="/" replace /> },
+  // employer
+{ path: "/employer/requests", element: <EmployerRequestsList /> },
+{ path: "/employer/requests/new", element: <EmployerRequestNew /> },
+
+// front desk
+{ path: "/frontdesk/requests", element: <FrontDeskRequests /> },
+
+// admin
+{ path: "/admin/users", element: <AdminUsers /> },
+
 ]);

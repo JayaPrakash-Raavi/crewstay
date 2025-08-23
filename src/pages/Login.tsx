@@ -1,15 +1,8 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+// src/pages/Login.tsx
+import { useState, type FormEvent, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import {
-  Alert,
-  Button,
-  Group,
-  Paper,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-  Title,
+  Alert, Button, Group, Paper, PasswordInput, Stack, Text, TextInput, Title,
 } from "@mantine/core";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -20,7 +13,12 @@ function validateEmail(v: string) {
 
 export default function Login() {
   const nav = useNavigate();
-  const { refresh } = useAuth();
+  const { refresh, user } = useAuth();
+  const [params] = useSearchParams();
+  const next = params.get("next") || "/dashboard";
+
+  // if already logged in, go where intended
+  useEffect(() => { if (user) nav(next, { replace: true }); }, [user, next, nav]);
 
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -40,8 +38,8 @@ export default function Login() {
         method: "POST",
         body: JSON.stringify({ email: email.trim(), password: pw }),
       });
-      await refresh();                // fetch /api/me and store user
-      nav("/dashboard", { replace: true });
+      await refresh();
+      nav(next, { replace: true });
     } catch (e: any) {
       setErr(e?.message || "Invalid email or password.");
     } finally {
@@ -60,18 +58,12 @@ export default function Login() {
         <form onSubmit={submit}>
           <Stack gap="sm">
             <TextInput
-              label="Email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.currentTarget.value)}
-              required
+              label="Email" type="email" placeholder="you@example.com"
+              value={email} onChange={(e) => setEmail(e.currentTarget.value)} required
             />
             <PasswordInput
-              label="Password"
-              value={pw}
-              onChange={(e) => setPw(e.currentTarget.value)}
-              required
+              label="Password" value={pw}
+              onChange={(e) => setPw(e.currentTarget.value)} required
             />
             <Button type="submit" loading={busy}>Sign in</Button>
           </Stack>
@@ -79,10 +71,10 @@ export default function Login() {
 
         <Group justify="space-between" mt="md">
           <Text size="sm">
-            New here? <Link to="/signup">Create account</Link>
+            New here? <Link to={`/signup?next=${encodeURIComponent(next)}`}>Create account</Link>
           </Text>
           <Text size="sm">
-            <Link to="/forgot-password">Forgot password?</Link>
+            <Link to="/">Back to home</Link>
           </Text>
         </Group>
       </Paper>

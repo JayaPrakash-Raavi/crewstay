@@ -1,161 +1,193 @@
-import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, Card, Container, Group, NumberInput, Select, Stack, Text, Textarea, Title } from "@mantine/core";
-import { DateInput } from "@mantine/dates"; // if you don't want dates, use <input type="date"> instead
-import { roomRequestSchema } from "../../../utils/zodSchemas";
-import { z } from "zod";
-import { supabase } from "../../../lib/supabaseClient";
-import { notifications } from "@mantine/notifications";
+import { useState } from "react";
+import {
+  Button,
+  Card,
+  Group,
+  NumberInput,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  Title,
+} from "@mantine/core";
+import { useNavigate } from "react-router-dom";
+import { api } from "../../../lib/api";
 
-type FormVals = z.infer<typeof roomRequestSchema>;
+type HotelOption = { value: string; label: string };
 
-type Hotel = { id: string; name: string };
-
-export default function EmployerNewRequest() {
-  const [hotels, setHotels] = useState<Hotel[]>([]);
-  const [employerId, setEmployerId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const { register, handleSubmit, setValue, formState: { errors, isSubmitting }, watch } = useForm<FormVals>({
-    resolver: zodResolver(roomRequestSchema),
-    defaultValues: {
-      singleRooms: 0,
-      doubleRooms: 0,
-      headcount: 1,
-    },
-  });
-
-  // Load profile (to get employer_id) and hotels
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { data: sess } = await supabase.auth.getSession();
-      const uid = sess.session?.user?.id;
-      if (!uid) {
-        setLoading(false);
-        return;
-      }
-      const { data: prof, error: perr } = await supabase
-        .from("user_profiles")
-        .select("employer_id")
-        .eq("id", uid)
-        .maybeSingle();
-      if (perr || !prof?.employer_id) {
-        notifications.show({ color: "red", title: "Profile not linked", message: "Your user is not linked to an employer. Ask admin to set employer_id." });
-        setLoading(false);
-        return;
-      }
-      setEmployerId(prof.employer_id);
-
-      const { data: h } = await supabase.from("hotels").select("id,name").order("name");
-      setHotels(h || []);
-      setLoading(false);
-    })();
-  }, []);
-
-  const stayStart = watch("stay_start");
-  const stayEnd = watch("stay_end");
-  const singleRooms = watch("singleRooms");
-  const doubleRooms = watch("doubleRooms");
-
-  const nights = useMemo(() => {
-    if (!stayStart || !stayEnd) return 0;
-    const a = new Date(stayStart); const b = new Date(stayEnd);
-    return Math.max(0, Math.round((+b - +a) / (1000 * 60 * 60 * 24)));
-  }, [stayStart, stayEnd]);
-
-  const capacity = useMemo(() => singleRooms * 1 + doubleRooms * 2, [singleRooms, doubleRooms]);
-
-  const onSubmit = async (vals: FormVals) => {
-    if (!employerId) return;
-    const { error } = await supabase.from("room_requests").insert({
-      employer_id: employerId,
-      hotel_id: vals.hotel_id,
-      stay_start: vals.stay_start,
-      stay_end: vals.stay_end,
-      headcount: vals.headcount,
-      room_type_mix: { SINGLE: vals.singleRooms, DOUBLE: vals.doubleRooms },
-      notes: vals.notes || null,
-      status: "SUBMITTED",
-    });
-    if (error) {
-      notifications.show({ color: "red", title: "Failed to create request", message: error.message });
-    } else {
-      notifications.show({ color: "green", title: "Request submitted", message: "Hotel can now review your request." });
-      // optional: navigate back to employer dashboard or list
-      // navigate("/employer");
-    }
+// helper to adapt Mantine NumberInput onChange to our state setters
+function numHandler(
+  setter: React.Dispatch<React.SetStateAction<number | "">>
+) {
+  return (v: string | number) => {
+    setter(v === "" ? "" : Number(v));
   };
+}
 
-  if (loading) return <Container><Text>Loading…</Text></Container>;
+export default function EmployerRequestNew() {
+  const nav = useNavigate();
+
+  // string dates from native date inputs
+  const [startStr, setStartStr] = useState<string>("");
+  const [endStr, setEndStr] = useState<string>("");
+
+  const [hotelId, setHotelId] = useState<string>("");
+  const [headcount, setHeadcount] = useState<number | "">(1);
+  const [single, setSingle] = useState<number | "">(0);
+  const [double, setDouble] = useState<number | "">(0);
+  const [notes, setNotes] = useState<string>("");
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const hotelOptions: HotelOption[] = [
+    { value: "22222222-2222-2222-2222-222222222222", label: "Riverside Inn" },
+  ];
+
+  const validDateOrder = (a: string, b: string) =>
+    new Date(a).getTime() < new Date(b).getTime();
+
+  async function submit() {
+    setErr(null);
+
+    if (!hotelId) return setErr("Choose a hotel.");
+    if (!startStr || !endStr) return setErr("Pick start and end dates.");
+    if (!validDateOrder(startStr, endStr))
+      return setErr("End must be after start.");
+    if (!headcount || Number(headcount) < 1)
+      return setErr("Headcount must be ≥ 1.");
+
+    setBusy(true);
+    try {
+      const payload = {
+        hotel_id: hotelId,
+        stay_start: startStr, // YYYY-MM-DD
+        stay_end: endStr, // YYYY-MM-DD
+        headcount: Number(headcount),
+        room_type_mix: {
+          SINGLE: Number(single || 0),
+          DOUBLE: Number(double || 0),
+        },
+        notes: notes || undefined,
+      };
+
+      await api<{ id: string }>("/api/employer/requests", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      nav("/employer/requests");
+    } catch (e: any) {
+      setErr(e?.message || "Failed to create request");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <Container size="sm" py="xl">
-      <Title order={3} mb="md">Create Room Request</Title>
-      <Card withBorder padding="lg" radius="md">
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <Stack gap="sm">
-            <Select
-              label="Hotel"
-              placeholder="Select a hotel"
-              data={hotels.map(h => ({ value: h.id, label: h.name }))}
-              onChange={(v) => setValue("hotel_id", v || "")}
-              error={errors.hotel_id?.message}
-              searchable
-              nothingFoundMessage="No hotels"
-            />
+    <Stack gap="md">
+      <Title order={2}>New Room Request</Title>
 
-            {/* If you prefer HTML date inputs, replace these with inputs and remove @mantine/dates */}
-            <DateInput
-              label="Stay start"
-              value={stayStart ? new Date(stayStart) : null}
-              onChange={(d:any) => setValue("stay_start", d ? d.toISOString().slice(0,10) : "")}
-              error={errors.stay_start?.message}
-            />
-            <DateInput
-              label="Stay end"
-              value={stayEnd ? new Date(stayEnd) : null}
-              onChange={(d:any) => setValue("stay_end", d ? d.toISOString().slice(0,10) : "")}
-              error={errors.stay_end?.message}
-            />
+      <Card withBorder radius="md" p="md">
+        <Stack gap="sm">
+          {err && <Text c="red">{err}</Text>}
 
-            <Group grow>
-              <NumberInput
-                label="Headcount"
-                min={1}
-                defaultValue={1}
-                {...register("headcount", { valueAsNumber: true })}
-                error={errors.headcount?.message}
+          <Select
+            label="Hotel"
+            placeholder="Pick a hotel"
+            data={hotelOptions}
+            value={hotelId}
+            onChange={(v) => setHotelId(v ?? "")}
+            required
+          />
+
+          <Group grow>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  color: "var(--mantine-color-dimmed)",
+                }}
+              >
+                Check-in
+              </label>
+              <input
+                type="date"
+                value={startStr}
+                onChange={(e) => setStartStr(e.currentTarget.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  border: "1px solid #ced4da",
+                  borderRadius: 6,
+                }}
               />
-              <NumberInput
-                label="Single rooms"
-                min={0}
-                defaultValue={0}
-                {...register("singleRooms", { valueAsNumber: true })}
-                error={errors.singleRooms?.message}
+            </div>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  color: "var(--mantine-color-dimmed)",
+                }}
+              >
+                Check-out
+              </label>
+              <input
+                type="date"
+                value={endStr}
+                onChange={(e) => setEndStr(e.currentTarget.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  border: "1px solid #ced4da",
+                  borderRadius: 6,
+                }}
               />
-              <NumberInput
-                label="Double rooms"
-                min={0}
-                defaultValue={0}
-                {...register("doubleRooms", { valueAsNumber: true })}
-                error={errors.doubleRooms?.message}
-              />
-            </Group>
+            </div>
+          </Group>
 
-            <Textarea label="Notes" minRows={3} {...register("notes")} />
+          <NumberInput
+            label="Headcount"
+            value={headcount}
+            onChange={numHandler(setHeadcount)}
+            min={1}
+            required
+          />
 
-            <Text c="dimmed" size="sm">
-              Nights: <b>{nights}</b> • Capacity from room mix: <b>{capacity}</b> guests
-            </Text>
+          <Group grow>
+            <NumberInput
+              label="Single rooms"
+              value={single}
+              onChange={numHandler(setSingle)}
+              min={0}
+            />
+            <NumberInput
+              label="Double rooms"
+              value={double}
+              onChange={numHandler(setDouble)}
+              min={0}
+            />
+          </Group>
 
-            <Group justify="flex-end" mt="md">
-              <Button type="submit" loading={isSubmitting}>Submit request</Button>
-            </Group>
-          </Stack>
-        </form>
+          <Textarea
+            label="Notes"
+            minRows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.currentTarget.value)}
+          />
+
+          <Group>
+            <Button loading={busy} onClick={submit}>
+              Create
+            </Button>
+            <Button variant="default" onClick={() => nav(-1)} disabled={busy}>
+              Cancel
+            </Button>
+          </Group>
+        </Stack>
       </Card>
-    </Container>
+    </Stack>
   );
 }

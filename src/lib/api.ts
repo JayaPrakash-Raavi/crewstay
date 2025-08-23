@@ -1,17 +1,26 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+export async function api<T = any>(
+  path: string,
+  init: RequestInit & { noThrow?: boolean } = {}
+): Promise<T> {
+  const BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") || "";
+  const url = BASE ? `${BASE}${path}` : path;
 
-function baseUrl(path: string) {
-  if (/^https?:\/\//i.test(path)) return path;
-  return `${API_BASE}${path}`;
-}
+  const headers = new Headers(init.headers || {});
+  if (!headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
 
-export async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(baseUrl(path), {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+  const res = await fetch(url, {
+    credentials: "include",   // <-- send/receive cookies
     ...init,
+    headers,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any)?.error || "Request failed");
-  return data as T;
+
+  if (!res.ok && !init.noThrow) {
+    let msg = `HTTP ${res.status}`;
+    try { msg = (await res.json())?.error || msg; } catch {}
+    throw new Error(msg);
+  }
+
+  try { return (await res.json()) as T; } catch { return {} as T; }
 }

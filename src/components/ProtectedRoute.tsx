@@ -1,10 +1,14 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
+import { Center, Loader } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
-import type { JSX } from "react";
 
-export default function ProtectedRoute({ children }: { children: JSX.Element }) {
+export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
-  if (!user) return <Navigate to="/login" replace />;
-  return children;
+  const loc = useLocation();
+  const next = encodeURIComponent(loc.pathname + loc.search);
+
+  if (loading) return <Center mih={240}><Loader /></Center>;
+  if (!user) return <Navigate to={`/login?next=${next}`} replace />;
+
+  return <>{children}</>;
 }
