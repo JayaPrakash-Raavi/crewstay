@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Card,
@@ -8,74 +8,94 @@ import {
   Stack,
   Text,
   Textarea,
+  TextInput,
   Title,
+  Loader,
+  Alert,
 } from "@mantine/core";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../../lib/api";
 
 type HotelOption = { value: string; label: string };
 
-// helper to adapt Mantine NumberInput onChange to our state setters
-function numHandler(
-  setter: React.Dispatch<React.SetStateAction<number | "">>
-) {
-  return (v: string | number) => {
-    setter(v === "" ? "" : Number(v));
-  };
-}
-
 export default function EmployerRequestNew() {
   const nav = useNavigate();
 
-  // string dates from native date inputs
-  const [startStr, setStartStr] = useState<string>("");
-  const [endStr, setEndStr] = useState<string>("");
+  // Hotels state
+  const [hotels, setHotels] = useState<HotelOption[]>([]);
+  const [hotelsLoading, setHotelsLoading] = useState(false);
+  const [hotelsErr, setHotelsErr] = useState<string | null>(null);
 
-  const [hotelId, setHotelId] = useState<string>("");
-  const [headcount, setHeadcount] = useState<number | "">(1);
-  const [single, setSingle] = useState<number | "">(0);
-  const [double, setDouble] = useState<number | "">(0);
-  const [notes, setNotes] = useState<string>("");
-
+  // Form state
+  const [hotelId, setHotelId] = useState<string | null>(null);
+  const [startStr, setStartStr] = useState("");
+  const [endStr, setEndStr] = useState("");
+  const [headcount, setHeadcount] = useState<number>(1);
+  const [single, setSingle] = useState<number>(0);
+  const [double, setDouble] = useState<number>(0);
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const hotelOptions: HotelOption[] = [
-    { value: "22222222-2222-2222-2222-222222222222", label: "Riverside Inn" },
-  ];
+  // Load hotels
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setHotelsErr(null);
+        setHotelsLoading(true);
+        const res = await api<{ items: { id: string; name: string }[] }>(
+          "/api/hotels"
+        );
+        const opts = (res.items || []).map((h) => ({
+          value: h.id,
+          label: h.name,
+        }));
+        if (!alive) return;
+        setHotels(opts);
+        // auto-select if only one hotel
+        if (opts.length === 1) setHotelId(opts[0].value);
+      } catch (e: any) {
+        if (!alive) return;
+        setHotelsErr(e?.message || "Failed to load hotels");
+      } finally {
+        if (alive) setHotelsLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const validDateOrder = (a: string, b: string) =>
-    new Date(a).getTime() < new Date(b).getTime();
+  function isUuid(v: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      v
+    );
+  }
 
   async function submit() {
     setErr(null);
-
-    if (!hotelId) return setErr("Choose a hotel.");
+    if (!hotelId || !isUuid(hotelId)) return setErr("Choose a valid hotel.");
     if (!startStr || !endStr) return setErr("Pick start and end dates.");
-    if (!validDateOrder(startStr, endStr))
-      return setErr("End must be after start.");
-    if (!headcount || Number(headcount) < 1)
-      return setErr("Headcount must be ≥ 1.");
+    if (endStr <= startStr) return setErr("End must be after start.");
+    if (!headcount || headcount < 1) return setErr("Headcount must be ≥ 1.");
+    const capacity = single + double * 2;
+    if (capacity < headcount)
+      return setErr(`Capacity (${capacity}) < headcount (${headcount}).`);
 
-    setBusy(true);
     try {
-      const payload = {
-        hotel_id: hotelId,
-        stay_start: startStr, // YYYY-MM-DD
-        stay_end: endStr, // YYYY-MM-DD
-        headcount: Number(headcount),
-        room_type_mix: {
-          SINGLE: Number(single || 0),
-          DOUBLE: Number(double || 0),
-        },
-        notes: notes || undefined,
-      };
-
+      setBusy(true);
       await api<{ id: string }>("/api/employer/requests", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          hotel_id: hotelId,
+          stay_start: startStr,
+          stay_end: endStr,
+          headcount,
+          room_type_mix: { SINGLE: single, DOUBLE: double },
+          notes: notes || undefined,
+        }),
       });
-
       nav("/employer/requests");
     } catch (e: any) {
       setErr(e?.message || "Failed to create request");
@@ -87,86 +107,60 @@ export default function EmployerRequestNew() {
   return (
     <Stack gap="md">
       <Title order={2}>New Room Request</Title>
-
       <Card withBorder radius="md" p="md">
         <Stack gap="sm">
-          {err && <Text c="red">{err}</Text>}
+          {hotelsErr && <Alert color="red">{hotelsErr}</Alert>}
+          {err && <Alert color="red">{err}</Alert>}
 
           <Select
             label="Hotel"
-            placeholder="Pick a hotel"
-            data={hotelOptions}
+            placeholder={hotelsLoading ? "Loading hotels..." : "Pick a hotel"}
+            data={hotels} // [{ value: id, label: name }]
             value={hotelId}
-            onChange={(v) => setHotelId(v ?? "")}
+            onChange={(v) => setHotelId(v)}
+            searchable
+            nothingFoundMessage="No hotels"
+            comboboxProps={{ withinPortal: true }} // ✅ v7 way
+            rightSection={hotelsLoading ? <Loader size="xs" /> : undefined}
+            disabled={hotelsLoading || hotels.length === 0}
             required
           />
 
           <Group grow>
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 12,
-                  color: "var(--mantine-color-dimmed)",
-                }}
-              >
-                Check-in
-              </label>
-              <input
-                type="date"
-                value={startStr}
-                onChange={(e) => setStartStr(e.currentTarget.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  border: "1px solid #ced4da",
-                  borderRadius: 6,
-                }}
-              />
-            </div>
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 12,
-                  color: "var(--mantine-color-dimmed)",
-                }}
-              >
-                Check-out
-              </label>
-              <input
-                type="date"
-                value={endStr}
-                onChange={(e) => setEndStr(e.currentTarget.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  border: "1px solid #ced4da",
-                  borderRadius: 6,
-                }}
-              />
-            </div>
+            <TextInput
+              label="Check-in"
+              type="date"
+              value={startStr}
+              onChange={(e) => setStartStr(e.currentTarget.value)}
+              required
+            />
+            <TextInput
+              label="Check-out"
+              type="date"
+              value={endStr}
+              onChange={(e) => setEndStr(e.currentTarget.value)}
+              required
+            />
           </Group>
 
           <NumberInput
             label="Headcount"
             value={headcount}
-            onChange={numHandler(setHeadcount)}
+            onChange={(v) => setHeadcount(Number(v) || 0)}
             min={1}
             required
           />
-
           <Group grow>
             <NumberInput
               label="Single rooms"
               value={single}
-              onChange={numHandler(setSingle)}
+              onChange={(v) => setSingle(Number(v) || 0)}
               min={0}
             />
             <NumberInput
               label="Double rooms"
               value={double}
-              onChange={numHandler(setDouble)}
+              onChange={(v) => setDouble(Number(v) || 0)}
               min={0}
             />
           </Group>
@@ -182,7 +176,7 @@ export default function EmployerRequestNew() {
             <Button loading={busy} onClick={submit}>
               Create
             </Button>
-            <Button variant="default" onClick={() => nav(-1)} disabled={busy}>
+            <Button variant="default" onClick={() => nav(-1)}>
               Cancel
             </Button>
           </Group>

@@ -1,89 +1,106 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
-import { Suspense, lazy } from "react";
+// src/router.tsx
+import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import Shell from "./components/Shell";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleGate from "./components/RoleGate";
 import PublicOnly from "./components/PublicOnly";
-import type { JSX } from "react/jsx-runtime";
-import EmployerRequestsList from "./pages/employer/requests/List";
+
+// Public pages
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import UpdatePassword from "./pages/UpdatePassword";
+
+// Common / authed
+import Dashboard from "./pages/Dashboard";
+// import Account from "./pages/Account"; // create a stub if you don't have it
+
+// Employer
+import EmployerHome from "./pages/employer/Index";
+import EmployerRequestsList from "./pages/employer/requests/List";   // stub if needed
 import EmployerRequestNew from "./pages/employer/requests/New";
-import FrontDeskRequests from "./pages/frontdesk/Requests";
-import AdminUsers from "./pages/admin/Users";
+import EmployerWorkers from "./pages/employer/Workers";              // <— the page you built
+// import EmployerWorkersImport from "./pages/employer/workers/Import";  // stub if needed
 
+// Front desk
+import FrontDeskHome from "./pages/frontdesk/Index";
+// import Assignments from "./pages/frontdesk/Assignments";  // stub if needed
+// import CheckIn from "./pages/frontdesk/checkin/Index";     // stub if needed
 
-// Lazy pages (keeps initial bundle small)
-const Home = lazy(() => import("./pages/Home"));
-const Login = lazy(() => import("./pages/Login"));
-const Signup = lazy(() => import("./pages/Signup"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const UpdatePassword = lazy(() => import("./pages/UpdatePassword"));
-
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const EmployerHome = lazy(() => import("./pages/employer/Index"));
-const FrontDeskHome = lazy(() => import("./pages/frontdesk/Index"));
-const AdminHome = lazy(() => import("./pages/admin/Index"));
-const Logout = lazy(() => import("./pages/Logout")); // added
-
-const Load = (el: JSX.Element) => (
-  <Suspense fallback={<div style={{ padding: 24 }}>Loading…</div>}>{el}</Suspense>
-);
+// Admin
+import AdminHome from "./pages/admin/Index";
+import AdminUsers from "./pages/admin/Users";      // stub if needed
+// import AdminReports from "./pages/admin/Reports";  // stub if needed
 
 export const router = createBrowserRouter([
-  // Public-only pages
-  { path: "/", element: Load(<PublicOnly><Home /></PublicOnly>) },
-  { path: "/login", element: Load(<PublicOnly><Login /></PublicOnly>) },
-  { path: "/signup", element: Load(<PublicOnly><Signup /></PublicOnly>) },
-  { path: "/forgot-password", element: Load(<PublicOnly><ForgotPassword /></PublicOnly>) },
-  { path: "/update-password", element: Load(<PublicOnly><UpdatePassword /></PublicOnly>) },
+  // Public-only
+  { path: "/", element: <PublicOnly><Home /></PublicOnly> },
+  { path: "/login", element: <PublicOnly><Login /></PublicOnly> },
+  { path: "/signup", element: <PublicOnly><Signup /></PublicOnly> },
+  { path: "/forgot-password", element: <PublicOnly><ForgotPassword /></PublicOnly> },
+  { path: "/update-password", element: <PublicOnly><UpdatePassword /></PublicOnly> },
 
-  // Authenticated area with AppShell
+  // Authed area
   {
-    element: Load(
+    element: (
       <ProtectedRoute>
         <Shell />
       </ProtectedRoute>
     ),
     children: [
-      { path: "/dashboard", element: Load(<Dashboard />) },
+      { path: "/dashboard", element: <Dashboard /> },
+      // { path: "/account", element: <Account /> },
+
+      // EMPLOYER section with nested routes
       {
         path: "/employer",
-        element: Load(
+        element: (
           <RoleGate allow={["EMPLOYER"]}>
-            <EmployerHome />
+            <Outlet />
           </RoleGate>
         ),
+        children: [
+          { index: true, element: <EmployerHome /> },                 // /employer
+          { path: "requests", element: <EmployerRequestsList /> },    // /employer/requests
+          { path: "requests/new", element: <EmployerRequestNew /> },  // /employer/requests/new
+          { path: "workers", element: <EmployerWorkers /> },          // /employer/workers  ✅
+          // { path: "workers/import", element: <EmployerWorkersImport /> },
+        ],
       },
+
+      // FRONT DESK
       {
         path: "/frontdesk",
-        element: Load(
+        element: (
           <RoleGate allow={["FRONTDESK"]}>
-            <FrontDeskHome />
+            <Outlet />
           </RoleGate>
         ),
+        children: [
+          { index: true, element: <FrontDeskHome /> },
+          // { path: "assignments", element: <Assignments /> },
+          // { path: "checkin", element: <CheckIn /> },
+        ],
       },
+
+      // ADMIN
       {
         path: "/admin",
-        element: Load(
+        element: (
           <RoleGate allow={["ADMIN"]}>
-            <AdminHome />
+            <Outlet />
           </RoleGate>
         ),
+        children: [
+          { index: true, element: <AdminHome /> },
+          { path: "users", element: <AdminUsers /> },
+          // { path: "reports", element: <AdminReports /> },
+        ],
       },
-      // handy for header "Sign out"
-      { path: "/logout", element: Load(<Logout />) },
     ],
   },
 
-  // Catch-all (last)
-  { path: "*", element: <Navigate to="/" replace /> },
-  // employer
-{ path: "/employer/requests", element: <EmployerRequestsList /> },
-{ path: "/employer/requests/new", element: <EmployerRequestNew /> },
-
-// front desk
-{ path: "/frontdesk/requests", element: <FrontDeskRequests /> },
-
-// admin
-{ path: "/admin/users", element: <AdminUsers /> },
-
+  // Fallback
+  { path: "*", element: <Navigate to="/dashboard" replace /> },
 ]);

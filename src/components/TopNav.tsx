@@ -18,8 +18,8 @@ import { useAuth } from "../context/AuthContext";
 type LinkItem = { to: string; label: string };
 
 function NavAnchor({ to, label }: LinkItem) {
-  const location = useLocation();
-  const active = location.pathname === to || location.pathname.startsWith(to + "/");
+  const { pathname } = useLocation();
+  const active = pathname === to || pathname.startsWith(to + "/");
   return (
     <NavLink to={to} style={{ textDecoration: "none" }}>
       <Text
@@ -27,7 +27,7 @@ function NavAnchor({ to, label }: LinkItem) {
         style={{
           padding: "6px 10px",
           borderRadius: 8,
-          background: active ? "rgba(0,0,0,0.04)" : "transparent",
+          background: active ? "rgba(0,0,0,0.05)" : "transparent",
         }}
       >
         {label}
@@ -41,21 +41,42 @@ export default function TopNav() {
   const [opened, setOpened] = useState(false);
   const nav = useNavigate();
   const loc = useLocation();
+  const next = encodeURIComponent(loc.pathname + loc.search);
 
+  // Global links that everyone can see
   const commonLinks: LinkItem[] = [
     { to: "/", label: "Home" },
-    { to: "/dashboard", label: "Dashboard" },
+    // { to: "/dashboard", label: "Dashboard" },
   ];
 
-  const roleLinks = useMemo<LinkItem[]>(() => {
-    if (!role) return [];
-    if (role === "EMPLOYER") return [{ to: "/employer", label: "Employer" }];
-    if (role === "FRONTDESK") return [{ to: "/frontdesk", label: "Front Desk" }];
-    if (role === "ADMIN") return [{ to: "/admin", label: "Admin" }];
-    return [];
+  // Role-specific section links
+  const roleSectionLinks = useMemo<LinkItem[]>(() => {
+    switch (role) {
+      case "EMPLOYER":
+        return [
+          { to: "/employer", label: "Employer" },
+          { to: "/employer/requests", label: "Requests" },
+          { to: "/employer/workers", label: "Workers" },
+          { to: "/account", label: "Account" },
+        ];
+      case "FRONTDESK":
+        return [
+          { to: "/frontdesk", label: "Front Desk" },
+          { to: "/frontdesk/assignments", label: "Assignments" },
+          { to: "/frontdesk/checkin", label: "Check-in" },
+          { to: "/account", label: "Account" },
+        ];
+      case "ADMIN":
+        return [
+          { to: "/admin", label: "Admin" },
+          { to: "/admin/users", label: "Users" },
+          { to: "/admin/reports", label: "Reports" },
+          { to: "/account", label: "Account" },
+        ];
+      default:
+        return [];
+    }
   }, [role]);
-
-  const next = encodeURIComponent(loc.pathname + loc.search);
 
   const RightSide = (
     <>
@@ -69,21 +90,48 @@ export default function TopNav() {
           </Button>
         </Group>
       ) : (
-        <Menu shadow="md" width={220} position="bottom-end">
+        <Menu shadow="md" width={240} position="bottom-end">
           <Menu.Target>
             <Group gap="xs" style={{ cursor: "pointer" }}>
-              <Avatar radius="xl" size={28}>{(user.name?.[0] || user.email?.[0] || "U").toUpperCase()}</Avatar>
+              <Avatar radius="xl" size={28}>
+                {(user.name?.[0] || user.email?.[0] || "U").toUpperCase()}
+              </Avatar>
               <Badge variant="light">{role ?? "USER"}</Badge>
             </Group>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label>{user.name || user.email}</Menu.Label>
-            <Menu.Item onClick={() => nav("/dashboard")}>Dashboard</Menu.Item>
-            {role === "EMPLOYER" && <Menu.Item onClick={() => nav("/employer")}>Employer</Menu.Item>}
-            {role === "FRONTDESK" && <Menu.Item onClick={() => nav("/frontdesk")}>Front Desk</Menu.Item>}
-            {role === "ADMIN" && <Menu.Item onClick={() => nav("/admin")}>Admin</Menu.Item>}
+            {/* <Menu.Item onClick={() => nav("/dashboard")}>Dashboard</Menu.Item> */}
+            {role === "EMPLOYER" && (
+              <>
+                <Menu.Item onClick={() => nav("/employer")}>Employer Home</Menu.Item>
+                <Menu.Item onClick={() => nav("/employer/requests")}>Requests</Menu.Item>
+                <Menu.Item onClick={() => nav("/employer/workers")}>Workers</Menu.Item>
+              </>
+            )}
+            {role === "FRONTDESK" && (
+              <>
+                <Menu.Item onClick={() => nav("/frontdesk")}>Front Desk Home</Menu.Item>
+                <Menu.Item onClick={() => nav("/frontdesk/assignments")}>Assignments</Menu.Item>
+                <Menu.Item onClick={() => nav("/frontdesk/checkin")}>Check-in</Menu.Item>
+              </>
+            )}
+            {role === "ADMIN" && (
+              <>
+                <Menu.Item onClick={() => nav("/admin")}>Admin Home</Menu.Item>
+                <Menu.Item onClick={() => nav("/admin/users")}>Users</Menu.Item>
+                <Menu.Item onClick={() => nav("/admin/reports")}>Reports</Menu.Item>
+              </>
+            )}
+            <Menu.Item onClick={() => nav("/account")}>Account</Menu.Item>
             <Menu.Divider />
-            <Menu.Item color="red" onClick={async () => { await signOut(); nav("/", { replace: true }); }}>
+            <Menu.Item
+              color="red"
+              onClick={async () => {
+                await signOut();
+                nav("/", { replace: true });
+              }}
+            >
               Sign out
             </Menu.Item>
           </Menu.Dropdown>
@@ -92,42 +140,88 @@ export default function TopNav() {
     </>
   );
 
+  // Optional: quick action for employer
+  const QuickAction =
+    role === "EMPLOYER" && user ? (
+      <Button size="xs" variant="filled" onClick={() => nav("/employer/requests/new")}>
+        + New Request
+      </Button>
+    ) : null;
+
   return (
-    <Box component="header" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "white" }}>
-      <Container size="lg" style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+    <Box
+      component="header"
+      style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "white" }}
+    >
+      <Container
+        size="lg"
+        style={{
+          height: 56,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
         {/* Left: brand + links (desktop) */}
         <Group gap="md">
           <Link to="/" style={{ textDecoration: "none" }}>
-            <Text fw={800} size="lg">WLP</Text>
+            <Text fw={800} size="lg">
+              WLP
+            </Text>
           </Link>
 
+          {/* primary links */}
           <Group gap="xs" visibleFrom="sm">
-            {commonLinks.map((l) => <NavAnchor key={l.to} {...l} />)}
-            {roleLinks.map((l) => <NavAnchor key={l.to} {...l} />)}
+            {commonLinks.map((l) => (
+              <NavAnchor key={l.to} {...l} />
+            ))}
+            {roleSectionLinks.map((l) => (
+              <NavAnchor key={l.to} {...l} />
+            ))}
           </Group>
         </Group>
 
         {/* Right: actions (desktop) */}
         <Group gap="md" visibleFrom="sm">
+          {QuickAction}
           {RightSide}
         </Group>
 
         {/* Mobile burger */}
-        <Burger opened={opened} onClick={() => setOpened((o) => !o)} hiddenFrom="sm" aria-label="Toggle navigation" />
+        <Burger
+          opened={opened}
+          onClick={() => setOpened((o) => !o)}
+          hiddenFrom="sm"
+          aria-label="Toggle navigation"
+        />
       </Container>
 
       {/* Mobile drawer */}
-      <Drawer opened={opened} onClose={() => setOpened(false)} padding="md" size="xs" title="Navigation" hiddenFrom="sm">
+      <Drawer
+        opened={opened}
+        onClose={() => setOpened(false)}
+        padding="md"
+        size="xs"
+        title="Navigation"
+        hiddenFrom="sm"
+      >
         <Stack gap="xs" mb="md">
-          {[...commonLinks, ...roleLinks].map((l) => (
-            <NavLink key={l.to} to={l.to} onClick={() => setOpened(false)} style={{ textDecoration: "none" }}>
+          {[...commonLinks, ...roleSectionLinks].map((l) => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              onClick={() => setOpened(false)}
+              style={{ textDecoration: "none" }}
+            >
               <Text fw={600}>{l.label}</Text>
             </NavLink>
           ))}
         </Stack>
-        <Box>
+        <Group justify="space-between">
+          {QuickAction}
           {RightSide}
-        </Box>
+        </Group>
       </Drawer>
     </Box>
   );
