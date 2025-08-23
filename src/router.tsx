@@ -32,6 +32,9 @@ import FrontDeskHome from "./pages/frontdesk/Index";
 import AdminHome from "./pages/admin/Index";
 import AdminUsers from "./pages/admin/Users";      // stub if needed
 // import AdminReports from "./pages/admin/Reports";  // stub if needed
+// in src/router.tsx (inside the authed Shell block)
+import Account from "./pages/Account";
+
 
 export const router = createBrowserRouter([
   // Public-only
@@ -83,6 +86,9 @@ export const router = createBrowserRouter([
           // { path: "checkin", element: <CheckIn /> },
         ],
       },
+
+{ path: "/account", element: <Account /> },
+
 
       // ADMIN
       {
